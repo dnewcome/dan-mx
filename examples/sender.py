@@ -11,10 +11,9 @@ import argparse
 import math
 import time
 
-from danmx import ColorSpace, Frame, TransferFunction, encode
-from danmx.codec import choose_encoding
+from danmx import ColorSpace, StreamEncoder, TransferFunction
 from danmx.color import bytes_per_pixel, pack
-from danmx.net import Sender
+from danmx.net import Sender as UdpSender
 
 COLOR_SPACES = {
     "rgb888": ColorSpace.RGB888,
@@ -55,13 +54,15 @@ def main() -> None:
     ap.add_argument("--pixels", type=int, default=128)
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--color-space", choices=COLOR_SPACES.keys(), default="g6r5b5")
+    ap.add_argument("--keyframe-interval", type=int, default=30,
+                    help="max delta frames between keyframes")
     args = ap.parse_args()
 
     cs = COLOR_SPACES[args.color_space]
     bpp = bytes_per_pixel(cs)
-    tx = Sender(args.host, args.port)
+    tx = UdpSender(args.host, args.port)
+    stream = StreamEncoder(keyframe_interval=args.keyframe_interval)
     period = 1.0 / args.fps
-    seq = 0
     start = time.monotonic()
     bytes_sent = 0
     frames_sent = 0
@@ -76,27 +77,20 @@ def main() -> None:
             t = time.monotonic() - start
             pixels = generate_frame(args.pixels, t)
             payload = pack(pixels, cs)
-            mode = choose_encoding(payload, bpp)
-            frame = Frame(
-                seq=seq & 0xFF,
-                start_pixel=0,
-                pixel_count=args.pixels,
-                encoding=mode,
-                color_space=cs,
+            wire, mode = stream.encode(
+                payload, pixel_count=args.pixels, color_space=cs,
                 transfer=TransferFunction.SRGB,
-                payload=payload,
             )
-            sent = tx.send(frame)
+            sent = tx.sock.sendto(wire, tx.addr)
             bytes_sent += sent
             frames_sent += 1
-            seq += 1
 
             if frames_sent % int(args.fps) == 0:
                 elapsed = time.monotonic() - start
                 raw_baseline = args.pixels * 3
                 ratio = sent / raw_baseline
-                print(f"  t={elapsed:6.1f}s  seq={seq:5d}  "
-                      f"mode={mode.name:4s}  wire={sent:4d}B  "
+                print(f"  t={elapsed:6.1f}s  frames={frames_sent:5d}  "
+                      f"mode={mode.name:5s}  wire={sent:4d}B  "
                       f"({ratio:.2f}× of RGB888 raw)  "
                       f"total={bytes_sent / 1024:.1f} KiB")
 

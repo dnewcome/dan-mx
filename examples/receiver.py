@@ -10,6 +10,7 @@ import argparse
 import sys
 import time
 
+from danmx import StreamDecoder
 from danmx.color import unpack
 from danmx.net import Receiver
 
@@ -38,11 +39,13 @@ def main() -> None:
     args = ap.parse_args()
 
     rx = Receiver(args.host, args.port)
+    stream = StreamDecoder()
     print(f"listening on {args.host}:{args.port}  (ctrl-c to stop)\n")
 
     last_seq: int | None = None
     received = 0
     dropped_stale = 0
+    dropped_no_ref = 0
     start = time.monotonic()
     last_report = start
     bytes_received = 0
@@ -51,11 +54,13 @@ def main() -> None:
         while True:
             data, addr = rx.sock.recvfrom(65535)
             bytes_received += len(data)
-            from danmx.codec import decode
             try:
-                frame = decode(data)
+                frame = stream.decode(data)
             except ValueError as e:
                 print(f"  bad frame from {addr[0]}: {e}", file=sys.stderr)
+                continue
+            if frame is None:
+                dropped_no_ref += 1
                 continue
 
             if last_seq is not None and seq_delta(frame.seq, last_seq) <= 0:
@@ -66,7 +71,7 @@ def main() -> None:
 
             pixels = unpack(frame.payload, frame.pixel_count, frame.color_space)
             bar = render(pixels, args.width)
-            sys.stdout.write(f"\r{bar} seq={frame.seq:3d} {frame.encoding.name:4s} "
+            sys.stdout.write(f"\r{bar} seq={frame.seq:3d} {frame.encoding.name:5s} "
                              f"{len(data):4d}B")
             sys.stdout.flush()
 
@@ -74,6 +79,7 @@ def main() -> None:
             if now - last_report >= 2.0:
                 elapsed = now - start
                 print(f"\n  {received} frames  {dropped_stale} stale  "
+                      f"{dropped_no_ref} no-ref  "
                       f"{bytes_received / 1024:.1f} KiB  "
                       f"{received / elapsed:.1f} fps")
                 last_report = now
@@ -82,6 +88,7 @@ def main() -> None:
         print(f"\n\n{received} frames in {elapsed:.1f}s "
               f"({received / elapsed:.1f} fps), "
               f"{dropped_stale} stale drops, "
+              f"{dropped_no_ref} no-ref drops, "
               f"{bytes_received / 1024:.1f} KiB received")
     finally:
         rx.close()

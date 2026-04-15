@@ -27,7 +27,9 @@ def encode(frame: Frame) -> bytes:
     elif frame.encoding == EncodingMode.RLE:
         body = rle.encode(frame.payload, bpp)
     elif frame.encoding == EncodingMode.DELTA:
-        body = frame.payload  # delta is pre-computed by the caller for now
+        # Caller supplies the XOR-delta stream as payload; we RLE it so
+        # the long runs of zeros (unchanged bytes) collapse.
+        body = rle.encode(frame.payload, bpp)
     else:
         raise ValueError(f"unknown encoding {frame.encoding}")
 
@@ -72,7 +74,7 @@ def decode(data: bytes) -> Frame:
     elif encoding == EncodingMode.RLE:
         payload = rle.decode(body, bpp, pixel_count)
     elif encoding == EncodingMode.DELTA:
-        payload = body
+        payload = rle.decode(body, bpp, pixel_count)
     else:
         raise ValueError(f"unknown encoding {encoding}")
 

@@ -1,4 +1,14 @@
-from .frame import Frame, EncodingMode, ColorSpace, TransferFunction
-from .codec import encode, decode
+from .codec import decode, encode
+from .frame import ColorSpace, EncodingMode, Frame, TransferFunction
+from .stream import StreamDecoder, StreamEncoder
 
-__all__ = ["Frame", "EncodingMode", "ColorSpace", "TransferFunction", "encode", "decode"]
+__all__ = [
+    "ColorSpace",
+    "EncodingMode",
+    "Frame",
+    "StreamDecoder",
+    "StreamEncoder",
+    "TransferFunction",
+    "decode",
+    "encode",
+]
