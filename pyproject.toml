@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "danmx"
+version = "0.0.1"
+description = "A successor to DMX512 and Art-Net for driving LED displays over IP."
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["danmx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
