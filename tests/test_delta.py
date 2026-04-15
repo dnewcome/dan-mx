@@ -28,7 +28,7 @@ def test_delta_chosen_when_frame_barely_changes():
     enc = StreamEncoder(keyframe_interval=30)
     # Noisy base that RLE can't compress, with a single pixel changed in
     # frame 2 — delta (mostly zeros in the XOR) should dominate.
-    base = [((i * 37) & 0xFF, (i * 53) & 0xFF, (i * 91) & 0xFF) for i in range(500)]
+    base = [((i * 37) & 0xFF, (i * 53) & 0xFF, (i * 91) & 0xFF) for i in range(400)]
     nudge = list(base)
     nudge[250] = (0, 0, 0)
     wires, modes = _encode_seq(
@@ -84,7 +84,7 @@ def test_decoder_drops_delta_without_reference():
     enc = StreamEncoder(keyframe_interval=1)
     dec = StreamDecoder()
     cs = ColorSpace.RGB888
-    count = 500
+    count = 400
     base = [((i * 37) & 0xFF, (i * 53) & 0xFF, (i * 91) & 0xFF) for i in range(count)]
     p0 = pack(base, cs)
     nudge = list(base)

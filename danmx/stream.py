@@ -16,13 +16,33 @@ from dataclasses import dataclass
 from typing import Optional
 
 from . import rle
-from .codec import decode as decode_frame, encode as encode_frame
+from .codec import HEADER_LEN, decode as decode_frame, encode as encode_frame
 from .color import bytes_per_pixel
 from .frame import ColorSpace, EncodingMode, Frame, TransferFunction
+
+# Standard Ethernet MTU (1500) minus IPv4 (20) minus UDP (8) = 1472 bytes
+# of UDP payload. One dan-mx frame = one UDP datagram fits inside that.
+ETHERNET_MTU_UDP_PAYLOAD = 1472
+
+
+class FrameTooLargeError(ValueError):
+    """Encoded frame would exceed the configured MTU ceiling."""
 
 
 def _xor(a: bytes, b: bytes) -> bytes:
     return bytes(x ^ y for x, y in zip(a, b))
+
+
+def max_safe_pixels(color_space: ColorSpace,
+                    max_wire_bytes: int = ETHERNET_MTU_UDP_PAYLOAD) -> int:
+    """Return the largest pixel_count whose RAW encoding is guaranteed to
+    fit inside `max_wire_bytes` (header + body). Use this to chunk wide
+    strips into multiple frames with different start_pixel values."""
+    bpp = bytes_per_pixel(color_space)
+    budget = max_wire_bytes - HEADER_LEN
+    if budget <= 0:
+        return 0
+    return budget // bpp
 
 
 @dataclass
@@ -35,8 +55,10 @@ class _Reference:
 class StreamEncoder:
     """Picks the smallest of RAW / RLE / DELTA for each frame."""
 
-    def __init__(self, keyframe_interval: int = 30):
+    def __init__(self, keyframe_interval: int = 30,
+                 max_wire_bytes: int = ETHERNET_MTU_UDP_PAYLOAD):
         self.keyframe_interval = keyframe_interval
+        self.max_wire_bytes = max_wire_bytes
         self._ref: Optional[_Reference] = None
         self._since_keyframe = 0
         self._seq = 0
@@ -84,6 +106,15 @@ class StreamEncoder:
             payload=body_payload,
         )
         wire = encode_frame(frame)
+
+        if len(wire) > self.max_wire_bytes:
+            raise FrameTooLargeError(
+                f"encoded frame is {len(wire)} B, exceeds max_wire_bytes="
+                f"{self.max_wire_bytes}. Split this update into multiple "
+                f"frames with different start_pixel ranges — see "
+                f"danmx.stream.max_safe_pixels({color_space.name}) = "
+                f"{max_safe_pixels(color_space, self.max_wire_bytes)} pixels."
+            )
 
         self._ref = _Reference(payload, pixel_count, color_space)
         self._seq += 1
